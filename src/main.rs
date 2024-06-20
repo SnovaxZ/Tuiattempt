@@ -1,29 +1,22 @@
-use std::{io, thread, time::Duration};
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use std::{
+    f64::consts::{E, PI},
+    fmt::format,
+    io, thread,
+    time::Duration,
+};
 use tui::{
-    backend::CrosstermBackend,
     backend::Backend,
-    widgets::{Widget, Block, Borders, List, ListItem, Paragraph},
-    layout::{Layout, Constraint, Direction},
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
-    Terminal,
-    Frame
-};
-use crossterm::{
-    event::{
-        self, 
-        DisableMouseCapture, 
-        EnableMouseCapture,
-        Event,
-        KeyCode
-    },
-    execute,
-    terminal::{
-        disable_raw_mode, 
-        enable_raw_mode,
-        EnterAlternateScreen,
-        LeaveAlternateScreen
-    },
+    widgets::{Block, Borders, List, ListItem, Paragraph, Widget},
+    Frame, Terminal,
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -44,10 +37,12 @@ struct App {
     ///State of a function
     state: usize,
     ///bool for switch
-    is_on: bool,
+    adi_is_on: bool,
+    ///bool for gaussian calc
+    gaussian_is_on: bool,
 }
 
-impl Default for App{
+impl Default for App {
     fn default() -> App {
         App {
             input: String::new(),
@@ -55,17 +50,18 @@ impl Default for App{
             messages: Vec::new(),
             parameters: [0.0; 4],
             state: 0,
-            is_on: false,
+            adi_is_on: false,
+            gaussian_is_on: false,
         }
     }
 }
 
 fn calculate_dose(weight: f32, max_dose: f32) -> f32 {
-    return weight * max_dose
+    return weight * max_dose;
 }
 
 fn calculate_max_items(max_dose: f32, item_dose: f32) -> f32 {
-    return max_dose / item_dose
+    return max_dose / item_dose;
 }
 
 fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
@@ -73,35 +69,35 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
         .direction(Direction::Vertical)
         .margin(2)
         .constraints(
-    [
+            [
                 Constraint::Length(1),
                 Constraint::Length(3),
-                Constraint::Min(1)
+                Constraint::Min(1),
             ]
             .as_ref(),
         )
         .split(f.size());
     let (msg, style) = match app.input_mode {
         InputMode::Normal => (
-        vec![
-            Span::raw("Press: "),
-            Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to exit, "),
-            Span::styled("e", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to start editing. "),
-        ],
-        Style::default().add_modifier(Modifier::RAPID_BLINK),
-    ),
+            vec![
+                Span::raw("Press: "),
+                Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to exit, "),
+                Span::styled("e", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to start editing. "),
+            ],
+            Style::default().add_modifier(Modifier::RAPID_BLINK),
+        ),
         InputMode::Editing => (
-        vec! [
-            Span::raw("Press "),
-            Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to stop editing. "),
-            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to record the message"),
-        ],
+            vec![
+                Span::raw("Press "),
+                Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to stop editing. "),
+                Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to record the message"),
+            ],
             Style::default(),
-    ),
+        ),
     };
     let mut text = Text::from(Spans::from(msg));
     text.patch_style(style);
@@ -138,9 +134,32 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
     let messages =
         List::new(messages).block(Block::default().borders(Borders::ALL).title("Messages"));
     f.render_widget(messages, chunks[2]);
-
 }
 
+fn matrix(w: f64, s: f64, count: &i32) -> String {
+    let countfloat = *count as f64;
+    //let s1 = s.powf(2.0);
+    let part1 = 2.0 * PI * s;
+    let part2 = countfloat - ((w + s) / 2.0);
+    let part3 = part2.powf(2.0);
+    let part4 = 2.0 / (2.0 * s);
+    let part5 = part1.sqrt();
+    let part6 = 1.0 / part5 * E;
+    let part7 = -1.0 * (part3 / part4);
+
+    let result = format!("{}", part6.powf(part7)).len() as f64 / 100.0;
+    return format!("{result}, ");
+}
+
+fn gaussian(width: f32, height: f32) -> String {
+    let mut count = width as i32 + height as i32;
+    let mut out: String = "".to_string();
+    while count > 0 {
+        out += &matrix(width as f64, height as f64, &count);
+        count -= 1;
+    }
+    return out;
+}
 fn main() -> Result<(), io::Error> {
     //setup the terminal
     enable_raw_mode()?;
@@ -176,7 +195,7 @@ fn main() -> Result<(), io::Error> {
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
     loop {
-        terminal.draw (|f| ui(f, &app))?;
+        terminal.draw(|f| ui(f, &app))?;
 
         if let Event::Key(key) = event::read()? {
             match app.input_mode {
@@ -189,59 +208,84 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     }
                     _ => {}
                 },
-                InputMode::Editing => match key.code {
-                    KeyCode::Enter => {
-                        let mut output = format!("");
-                        if app.input == "ADI-calc" {
-                            app.input.push_str(&format!(" function started, input weight:"));
-                            app.is_on = true;
-                        } else if app.is_on {
-                            output = handleinput(&mut app);
-                            app.state += 1;
-                            if app.state == 3 {
-                                app.state = 0;
+                InputMode::Editing => {
+                    match key.code {
+                        KeyCode::Enter => {
+                            let mut output = format!("");
+                            if app.input == "ADI-calc" {
+                                app.input
+                                    .push_str(&format!(" function started, input weight:"));
+                                app.adi_is_on = true;
+                            } else if app.adi_is_on {
+                                output = handleinput(&mut app);
+                                app.state += 1;
+                                if app.state == 3 {
+                                    app.state = 0;
+                                };
                             };
-                        };
-                        if app.input == "clear" {
-                            app.messages.clear()
-                        };
-                        if app.input == "neofetch" {
-                            app.messages.push(format!("                   -`                    snovaxz@archtop"));
-                            app.messages.push(format!("                  .o+`                   ---------------"));
-                            app.messages.push(format!("                 `ooo/                   OS: Arch Linux x86_64"));
-                            app.messages.push(format!("                `+oooo:                  Host: ThinkPad"));
-                            app.messages.push(format!("               `+oooooo:                 Kernel: 8.9.3-arch1-1"));
-                            app.messages.push(format!("               -+oooooo+:                Uptime: 40 hours, 57 mins"));
-                            app.messages.push(format!("             `/:-:++oooo+:               Packages: 12780 (pacman), 120 (flatpak)"));
-                            app.messages.push(format!("            `/++++/+++++++:              Shell: Totally"));
-                            app.messages.push(format!("           `/++++++++++++++:             Resolution: 25600x14400"));
-                            app.messages.push(format!("          `/+++ooooooooooooo/`           WM: sway"));
-                            app.messages.push(format!("         ./ooosssso++osssssso+`          Theme: Adwaita [GTK2/3]"));
-                            app.messages.push(format!("        .oossssso-````/ossssss+`         Icons: breeze-dark [GTK2/3]"));
-                            app.messages.push(format!("       -osssssso.      :ssssssso.        Terminal: It's complicated"));
-                            app.messages.push(format!("      :osssssss/        osssso+++.       Terminal Font: Inconsolata"));
-                            app.messages.push(format!("     /ossssssss/        +ssssooo/-       CPU: Intel i7-6600U (4) @ 30.400GHz"));
-                            app.messages.push(format!("   `/ossssso+/:-        -:/+osssso+-     GPU: Intel Skylake GT2 [HD Graphics]"));
-                            app.messages.push(format!("  `+sso+:-`                 `.-/+oso:    Memory: 2MiB / 118290GiB"));
-                            app.messages.push(format!(" `++:.                           `-/+/"));
-                            app.messages.push(format!(" .`                                 `/"));
-                      };
-                        app.messages.push(app.input.drain(..).collect());
-                        if output != "" {
-                            app.messages.push(output);
-                        };
+                            if app.input == "gaussian" {
+                                app.input.push_str(" started input height: ");
+                                app.gaussian_is_on = true;
+                            } else if app.gaussian_is_on {
+                                output = handleinput(&mut app);
+                                app.state += 1;
+                                if app.state == 2 {
+                                    app.state = 0;
+                                };
+                            };
+                            if app.input == "clear" {
+                                app.messages.clear()
+                            };
+                            if app.input == "neofetch" {
+                                app.messages.push(format!(
+                                    "                   -`                    snovaxz@archtop"
+                                ));
+                                app.messages.push(format!(
+                                    "                  .o+`                   ---------------"
+                                ));
+                                app.messages.push(format!("                 `ooo/                   OS: Arch Linux x86_64"));
+                                app.messages.push(format!(
+                                    "                `+oooo:                  Host: ThinkPad"
+                                ));
+                                app.messages.push(format!("               `+oooooo:                 Kernel: 8.9.3-arch1-1"));
+                                app.messages.push(format!("               -+oooooo+:                Uptime: 40 hours, 57 mins"));
+                                app.messages.push(format!("             `/:-:++oooo+:               Packages: 12780 (pacman), 120 (flatpak)"));
+                                app.messages.push(format!(
+                                    "            `/++++/+++++++:              Shell: Totally"
+                                ));
+                                app.messages.push(format!("           `/++++++++++++++:             Resolution: 25600x14400"));
+                                app.messages.push(format!(
+                                    "          `/+++ooooooooooooo/`           WM: sway"
+                                ));
+                                app.messages.push(format!("         ./ooosssso++osssssso+`          Theme: Adwaita [GTK2/3]"));
+                                app.messages.push(format!("        .oossssso-````/ossssss+`         Icons: breeze-dark [GTK2/3]"));
+                                app.messages.push(format!("       -osssssso.      :ssssssso.        Terminal: It's complicated"));
+                                app.messages.push(format!("      :osssssss/        osssso+++.       Terminal Font: Inconsolata"));
+                                app.messages.push(format!("     /ossssssss/        +ssssooo/-       CPU: Intel i7-6600U (4) @ 30.400GHz"));
+                                app.messages.push(format!("   `/ossssso+/:-        -:/+osssso+-     GPU: Intel Skylake GT2 [HD Graphics]"));
+                                app.messages.push(format!("  `+sso+:-`                 `.-/+oso:    Memory: 2MiB / 118290GiB"));
+                                app.messages
+                                    .push(format!(" `++:.                           `-/+/"));
+                                app.messages
+                                    .push(format!(" .`                                 `/"));
+                            };
+                            app.messages.push(app.input.drain(..).collect());
+                            if output != "" {
+                                app.messages.push(output);
+                            };
+                        }
+                        KeyCode::Char(c) => {
+                            app.input.push(c);
+                        }
+                        KeyCode::Backspace => {
+                            app.input.pop();
+                        }
+                        KeyCode::Esc => {
+                            app.input_mode = InputMode::Normal;
+                        }
+                        _ => {}
                     }
-                    KeyCode::Char(c) => {
-                        app.input.push(c);
-                    }
-                    KeyCode::Backspace => {
-                        app.input.pop();
-                    }
-                    KeyCode::Esc => {
-                        app.input_mode = InputMode::Normal;
-                    }
-                    _ => {}
-                },
+                }
             }
         }
     }
@@ -250,30 +294,52 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
 fn handleinput(app: &mut App) -> String {
     let msg = app.input.clone();
     let mut output = format!("empty");
-    if app.state < 4 {
-        let trimmed = msg.trim();
-        match trimmed.parse::<f32>() {
-            Ok(i) => {
-                app.parameters[app.state] = i;
-            }
-            Err(..) => {app.messages.push("Not a number".to_string())}
+    if app.adi_is_on {
+        if app.state < 4 {
+            let trimmed = msg.trim();
+            match trimmed.parse::<f32>() {
+                Ok(i) => {
+                    app.parameters[app.state] = i;
+                }
+                Err(..) => app.messages.push("Not a number".to_string()),
+            };
         };
-    };
-    match app.state {
-         0 => {
-            output = format!("input maximum dose");
-        },
-         1 => {
-            output = format!("input amount inside item");
-        },
-        _ => {},
-    };
-    if app.state >= 2 {
-        let max_dose = calculate_dose(app.parameters[0], app.parameters[1]);
-        let max_items = calculate_max_items(max_dose, app.parameters[2]);
-        output = format!("Safe amount of these is {max_items}");
-        app.is_on = false;
-    };
-    return output
+        match app.state {
+            0 => {
+                output = format!("input maximum dose");
+            }
+            1 => {
+                output = format!("input amount inside item");
+            }
+            _ => {}
+        };
+        if app.state >= 2 {
+            let max_dose = calculate_dose(app.parameters[0], app.parameters[1]);
+            let max_items = calculate_max_items(max_dose, app.parameters[2]);
+            output = format!("Safe amount of these is {max_items}");
+            app.adi_is_on = false;
+        };
+    } else if app.gaussian_is_on {
+        if app.state < 4 {
+            let trimmed = msg.trim();
+            match trimmed.parse::<f32>() {
+                Ok(i) => {
+                    app.parameters[app.state] = i;
+                }
+                Err(..) => app.messages.push("Not a number".to_string()),
+            };
+        };
+        match app.state {
+            0 => {
+                output = format!("input width");
+            }
+            _ => {}
+        };
+        if app.state >= 1 {
+            let gaussianstr = gaussian(app.parameters[0], app.parameters[1]);
+            output = format!("{gaussianstr}");
+            app.gaussian_is_on = false;
+        };
+    }
+    return output;
 }
-
